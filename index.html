@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cat Roguelike MMO</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        /* Forced Landscape Mode for Mobile Portrait */
+        /* Only apply to devices with width < 760px (Phones), preventing Tablets from forcing rotation */
+        @media screen and (orientation: portrait) and (max-width: 760px) {
+            #game-container {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 100vh; /* Swap width/height */
+                height: 100vw;
+                /* Rotate 90deg to force landscape view */
+                transform: translate(-50%, -50%) rotate(90deg);
+            }
+        }
+
+        canvas {
+            image-rendering: pixelated;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            outline: none; /* Remove blue focus outline */
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2000;
+        }
+        #chat-box {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            max-width: 90%;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #fff;
+            border-radius: 8px;
+            padding: 15px;
+            color: white;
+            display: none;
+            pointer-events: auto;
+        }
+        #npc-name {
+            font-weight: bold;
+            color: #ffd700;
+            margin-bottom: 5px;
+        }
+        #npc-text {
+            font-size: 16px;
+            line-height: 1.4;
+        }
+        .interaction-prompt {
+            position: absolute;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            pointer-events: none;
+            display: none;
+            z-index: 100;
+        }
+        #loading {
+            position: absolute;
+            color: white;
+            font-size: 24px;
+            z-index: 3000;
+            pointer-events: none;
+        }
+        #joystick-zone {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 120px;
+            height: 120px;
+            pointer-events: auto;
+            z-index: 2001;
+        }
+        #close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: 2px solid white;
+            border-radius: 50%;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+            font-weight: bold;
+            font-size: 20px;
+            cursor: pointer;
+            z-index: 4000;
+            pointer-events: auto;
+            transition: opacity 0.5s;
+        }
+        #focus-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.4);
+            display: none;
+            z-index: 2500;
+            pointer-events: none;
+        }
+        
+        /* Party UI */
+        #party-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: auto; /* Allow interaction for kicks */
+            z-index: 2002;
+        }
+
+        .party-member {
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #555;
+            border-radius: 25px; /* Pill shape */
+            padding: 5px 15px 5px 5px;
+            color: white;
+            font-size: 14px;
+            width: fit-content;
+            transition: border-color 0.2s;
+        }
+        
+        .party-member.is-leader {
+            border-color: #ffd700;
+        }
+
+        .party-portrait {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #333;
+            margin-right: 10px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px solid transparent;
+        }
+        
+        .party-member.is-leader .party-portrait {
+            border-color: #ffd700;
+            box-shadow: 0 0 10px #ffd700;
+        }
+
+        .crown-icon {
+            position: absolute;
+            top: -12px;
+            left: 12px;
+            color: #ffd700;
+            font-size: 20px;
+            text-shadow: 0 2px 2px black;
+            display: none;
+        }
+
+        .party-member.is-leader .crown-icon {
+            display: block;
+        }
+
+        /* Context Menu */
+        #context-menu {
+            position: absolute;
+            background: #2a2a2a;
+            border: 1px solid #555;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+            border-radius: 8px;
+            padding: 5px 0;
+            min-width: 150px;
+            z-index: 5000;
+            display: none;
+            flex-direction: column;
+        }
+
+        .ctx-item {
+            padding: 10px 15px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .ctx-item:hover {
+            background: #444;
+        }
+        
+        .ctx-item.disabled {
+            color: #777;
+            pointer-events: none;
+        }
+
+        /* Modal */
+        #modal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 6000;
+            display: none;
+        }
+
+        .game-modal {
+            background: #1a1a1a;
+            border: 2px solid #fff;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            max-width: 80%;
+            width: 300px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .btn-accept { background: #4caf50; color: white; }
+        .btn-decline { background: #f44336; color: white; }
+
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="bgCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none;"></canvas>
+        <div id="loading">Tap to Start</div>
+        <canvas id="gameCanvas" style="position: relative; z-index: 1; width: 100%; height: 100%;"></canvas>
+        <div id="focus-overlay"></div>
+        <div id="ui-layer">
+            <div id="party-hud"></div>
+            <div id="joystick-zone"></div>
+            <div id="interaction-label" class="interaction-prompt">Press 'T' to Talk</div>
+            <div id="chat-box">
+                <div id="npc-name">Shopkeeper</div>
+                <div id="npc-text">...</div>
+            </div>
+            <div id="close-btn">X</div>
+        </div>
+        
+        <div id="context-menu"></div>
+        
+        <div id="modal-overlay">
+            <div class="game-modal">
+                <div id="modal-text"></div>
+                <div class="modal-buttons">
+                    <button id="modal-accept" class="modal-btn btn-accept">Accept</button>
+                    <button id="modal-decline" class="modal-btn btn-decline">Decline</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="src/main.js"></script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"4c6229722a6346bc8eb5cb0e5eae5d41","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
+
