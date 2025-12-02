@@ -9,6 +9,7 @@ export const Input = {
 
     init(canvas) {
         const focusOverlay = document.getElementById('focus-overlay');
+        const gameContainer = document.getElementById('game-container');
 
         // LONG TAP LOGIC
         let touchTimer = null;
@@ -49,16 +50,16 @@ export const Input = {
             if (focusOverlay) focusOverlay.style.display = 'none';
         });
 
-        // Desktop-only: show grey overlay when mouse leaves the game canvas region
-        if (!isTouchDevice && focusOverlay) {
-            canvas.addEventListener('mouseenter', () => {
+        // Desktop-only: show grey overlay when mouse leaves the game container (including UI)
+        if (!isTouchDevice && focusOverlay && gameContainer) {
+            gameContainer.addEventListener('mouseenter', () => {
                 // Only hide overlay if window/tab itself has focus
                 if (document.hasFocus()) {
                     focusOverlay.style.display = 'none';
                 }
             });
 
-            canvas.addEventListener('mouseleave', () => {
+            gameContainer.addEventListener('mouseleave', () => {
                 // Only show overlay if the window still has focus (true "out of game region")
                 if (document.hasFocus()) {
                     focusOverlay.style.display = 'block';
@@ -124,7 +125,7 @@ export const Input = {
             }
         };
 
-        canvas.addEventListener('mousemove', (e) => {
+        window.addEventListener('mousemove', (e) => {
             const pos = getMappedCoordinates(e.clientX, e.clientY);
             this.mouse.x = pos.x;
             this.mouse.y = pos.y;
