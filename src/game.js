@@ -1,5 +1,6 @@
 import { Input } from './input.js';
 import { Renderer } from './renderer.js';
+import { drawCharacter } from './character-renderer.js';
 import { CONFIG, MAP_DATA } from './config.js';
 import { ASSETS, loadAssets, playSound } from './assets.js';
 import { interactWithNPC, closeChat } from './ai.js';
@@ -78,19 +79,44 @@ function updatePartyUI() {
         const div = document.createElement('div');
         div.className = 'party-member' + (m.isLeader ? ' is-leader' : '');
         
-        // Portrait Color Hash
-        let hash = 0;
-        const idStr = m.id || 'unknown';
-        for (let i = 0; i < idStr.length; i++) hash = idStr.charCodeAt(i) + ((hash << 5) - hash);
-        const hue = Math.abs(hash) % 360;
+        // Portrait Container
+        const portraitContainer = document.createElement('div');
+        portraitContainer.className = 'party-portrait';
+        // Use standard background for portrait background
+        portraitContainer.style.background = '#2a2a2a'; 
 
-        div.innerHTML = `
-            <div class="crown-icon">👑</div>
-            <div class="party-portrait" style="background: hsl(${hue}, 70%, 60%)">
-                <div style="width:60%; height:60%; background:white; border-radius:50%"></div>
-            </div>
-            <span>${m.name}</span>
-        `;
+        // Canvas for Accurate Character Render
+        const canvas = document.createElement('canvas');
+        canvas.width = 40;
+        canvas.height = 40;
+        portraitContainer.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        
+        // Dummy entity for portrait rendering
+        // Use member ID to ensure consistent colors
+        const dummy = {
+            id: m.id,
+            facing: 'down',
+            isMoving: true, // Walking in place
+            aimAngle: Math.PI / 2,
+            username: null // No text tag in portrait
+        };
+
+        // Draw character centered at 20,20 with size 28 (slightly smaller than 32 to fit circle)
+        // Offset slightly to center visual mass
+        drawCharacter(ctx, dummy, 6, 6, 28, false);
+
+        const crown = document.createElement('div');
+        crown.className = 'crown-icon';
+        crown.innerText = '👑';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = m.name;
+
+        div.appendChild(crown);
+        div.appendChild(portraitContainer);
+        div.appendChild(nameSpan);
         
         // Add Context Menu for Kicking (Host Only)
         // If I am leader, and this member is NOT me
@@ -389,23 +415,28 @@ async function init() {
     // Handle projectile events
     room.onmessage = (e) => {
         const data = e.data;
+        if (!data) return;
         
         // --- PARTY MESSAGES ---
+
+        // 1. Party Invite
+        if (data.type === 'PARTY_INVITE' && data.targetId === state.myId) {
+             // Check cooldown
+             if (state.party.cooldowns[data.fromId] && Date.now() < state.party.cooldowns[data.fromId]) return;
+
+             showModal(`${data.fromName || 'Someone'} invites you to a party!`, () => {
+                 // Accept
+                 room.send({ type: 'PARTY_ACCEPT', targetId: data.fromId, fromId: state.myId, fromName: 'Me' });
+             }, () => {
+                 // Decline
+                 room.send({ type: 'PARTY_DECLINE', targetId: data.fromId, fromId: state.myId });
+             });
+             return;
+        }
+
+        // 2. Other Party Events
         if (data.targetId === state.myId || data.type === 'PARTY_UPDATE' || data.type === 'PARTY_KICK') {
             
-            if (data.type === 'PARTY_INVITE') {
-                // Check cooldown
-                if (state.party.cooldowns[data.fromId] && Date.now() < state.party.cooldowns[data.fromId]) return;
-
-                showModal(`${data.fromName} invites you to a party!`, () => {
-                    // Accept
-                    room.send({ type: 'PARTY_ACCEPT', targetId: data.fromId, fromId: state.myId, fromName: 'Me' });
-                }, () => {
-                    // Decline
-                    room.send({ type: 'PARTY_DECLINE', targetId: data.fromId, fromId: state.myId });
-                });
-            }
-
             if (data.type === 'PARTY_REQUEST_JOIN') {
                 if (!isPartyLeader()) return; // Only leader handles this
                  if (state.party.cooldowns[data.fromId] && Date.now() < state.party.cooldowns[data.fromId]) return;
